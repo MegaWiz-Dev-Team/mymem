@@ -139,7 +139,9 @@ metadata:
 
 ## Requirements (macOS เท่านั้น)
 
-> ⚠️ รองรับ **macOS เท่านั้น** (พึ่ง `hostname -s`, BSD `sed -i ''`, `~/.zshrc`, Tailscale.app, Remote Login) ยังไม่รองรับ Linux/Windows
+> ⚠️ **รองรับ macOS เท่านั้น** (binary พึ่ง Unix symlink, `/dev/urandom`, `hostname -s` + ต้องมี `rsync`/`zsh`/Remote Login/Tailscale Mac app)
+>
+> **แพลตฟอร์มอื่น:** เครื่อง Linux / **WSL2** เข้า mesh ได้ด้วยการแก้เล็กน้อย (โค้ด Rust เกือบ POSIX หมด แก้แค่ `open`) · **Windows native** ยังไม่รองรับ ต้อง port (symlink→junction, ลง rsync, `COMPUTERNAME`/`USERPROFILE`) · การแชร์กับ WSL ต้องรัน Claude Code ใน WSL ด้วย (memory จะได้อยู่ที่ WSL `~/.claude`)
 
 ต้องมี: macOS, **Rust/cargo** (build) หรือ prebuilt binary ข้ามเครื่อง Apple Silicon, zsh, rsync+ssh (มากับ macOS), python3 (install.sh merge hooks), **Tailscale Mac app** ทั้งสองเครื่อง, **Remote Login** เปิดฝั่งปลายทาง, **SSH key auth** ระหว่างเครื่อง, **peer** ที่ `~/.claude/memnir.conf`
 

@@ -47,7 +47,7 @@ cd memnir
 ./install.sh
 ```
 
-`install.sh` builds with `cargo build --release`, installs the binary to `~/.local/bin/memnir`, adds a shell alias, symlinks all existing projects into the pool, installs the auto-sync hooks, and asks for the peer host.
+`install.sh` builds with `cargo build --release`, installs the binary to `~/.local/bin/memnir`, adds shell aliases (`memnir` and the short `mn`), symlinks all existing projects into the pool, installs the auto-sync hooks, and asks for the peer(s).
 
 > No `cargo` on a machine but same arch (Apple Silicon)? Build once and copy the binary: `scp target/release/memnir other-mac:.local/bin/`. `install.sh` falls back to a prebuilt binary if `cargo` is missing.
 
@@ -89,10 +89,11 @@ memnir link                           # link the current project into the pool r
 
 ```
 MEMNIR HEALTH ───────────────────────────────── your-laptop
-inventory   231 memories   project:174 feedback:36 reference:21
+inventory   231 memories   project:174  feedback:36  reference:21
 scope       shared:195   local:36
+origins     your-laptop:140  other-mac:60  ?:31
 tokens      index ~15.0k/session 🔴   pool ~195k
-sync        peer you@other-mac ✓   drift: 0 files
+peers       2 (reachable 2)   drift: 0 files
 
 ⚠ ISSUES & ACTIONS
  🔴 index 15k always-on        → compact-index (Tier-0 split)
@@ -106,10 +107,10 @@ sync        peer you@other-mac ✓   drift: 0 files
 |---|---|
 | `memnir sync` | push + pull `scope: shared` only, then regenerate the index |
 | `memnir push` / `pull` | one direction (shared only) |
-| `memnir share <id>` | set a memory `scope: shared` and push it to the peer |
+| `memnir share <id>` | set a memory `scope: shared` and push it to the peers |
 | `memnir local <id>` | remove the tag → local again (won't sync) |
-| `memnir list` | list shared vs local memories |
-| `memnir status` | store path, counts (shared:local), peer |
+| `memnir list` | list shared vs local memories (shared show their origin machine) |
+| `memnir status` | store path, counts, origins, peers |
 | `memnir help` | list all commands (also `-h` / `--help`) |
 | `memnir start` | autolink current project + sync (run by the SessionStart hook) |
 | `memnir link` | manually symlink the current project into the pool |
@@ -127,7 +128,7 @@ sync        peer you@other-mac ✓   drift: 0 files
 
 Bound to `127.0.0.1` only, guarded by a random per-session token in the URL. Stop with `Ctrl-C`.
 
-`<id>` is a memory name, with or without `.md`.
+`<id>` is a memory name, with or without `.md`. Every command also works via the short **`mn`** alias (e.g. `mn doctor`).
 
 ## Scope: shared vs local 🔑
 
@@ -157,7 +158,9 @@ Sync is filtered with `rsync --files-from=<list of scope:shared files>` — loca
 
 ## Requirements (macOS)
 
-> ⚠️ Tested and supported on **macOS only** — relies on macOS/BSD behavior (`hostname -s`, BSD `sed -i ''`, `~/.zshrc`, the Tailscale.app path, Remote Login). Linux/Windows not yet supported.
+> ⚠️ **Supported on macOS only.** The binary relies on Unix symlinks, `/dev/urandom`, and `hostname -s`, and the setup assumes `rsync` + `zsh` + Remote Login + the Tailscale Mac app.
+>
+> **Other platforms:** a Linux / **WSL2** machine can join the mesh with small tweaks (the Rust core is mostly POSIX — only the `open` browser call is Mac-specific). **Native Windows** is not supported yet — it would need a port (symlinks → junctions, bundled `rsync`, `COMPUTERNAME`/`USERPROFILE`). Note that to share with a WSL node, Claude Code must also run inside WSL so its memory lives at the WSL `~/.claude`.
 
 | need | notes |
 |---|---|
@@ -168,8 +171,8 @@ Sync is filtered with `rsync --files-from=<list of scope:shared files>` — loca
 | **python3** | used by `install.sh` to merge hooks into `settings.json` (ships with Command Line Tools — `xcode-select --install`) |
 | **[Tailscale](https://tailscale.com)** | the **Mac app** on both machines, on the same tailnet |
 | **Remote Login** | enable on the machine you sync *to*: System Settings → General → Sharing → Remote Login (enable on both for two-way) |
-| **SSH key auth** | passwordless between machines (`ssh-keygen` + the public key in the other machine's `~/.ssh/authorized_keys`) |
-| **peer** | `~/.claude/memnir.conf` or env `MEMNIR_PEER` = `user@tailscale-host` of the other machine |
+| **SSH key auth** | passwordless between every pair, both directions (`ssh-keygen` + the public key in the other machine's `~/.ssh/authorized_keys`) |
+| **peers** | `~/.claude/memnir.conf` — one `user@tailscale-host` per line (mesh: list every other machine) — or env `MEMNIR_PEER` |
 
 **macOS notes:**
 - `systemsetup -setremotelogin on` needs the terminal to have Full Disk Access — the GUI toggle (Sharing) is easier and needs no FDA.
