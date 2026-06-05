@@ -161,6 +161,22 @@ fn fmt_counts(m: &BTreeMap<String, usize>) -> String {
     v.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
     v.iter().map(|(k, c)| format!("{}:{}", k, c)).collect::<Vec<_>>().join("  ")
 }
+// Score a memory against lowercased query tokens: filename/name=6, description=3,
+// body=1 per token hit. Returns (score, which-fields-matched). Pure → unit-tested.
+fn score_match(tokens: &[&str], file: &str, name: &str, desc: &str, body: &str) -> (i32, String) {
+    let (fl, nm, dl, bl) = (file.to_lowercase(), name.to_lowercase(), desc.to_lowercase(), body.to_lowercase());
+    let (mut score, mut n, mut d, mut b) = (0i32, false, false, false);
+    for t in tokens {
+        if fl.contains(t) || nm.contains(t) { score += 6; n = true; }
+        if dl.contains(t) { score += 3; d = true; }
+        if bl.contains(t) { score += 1; b = true; }
+    }
+    let mut f = Vec::new();
+    if n { f.push("name"); }
+    if d { f.push("desc"); }
+    if b { f.push("body"); }
+    (score, f.join("+"))
+}
 
 // ---------- model / load ----------
 struct Mem {
@@ -489,6 +505,69 @@ fn cmd_doctor(check: bool) {
     println!("→ visualize:  memnir dash");
 }
 
+// ---------- search ----------
+fn cmd_search(query: &str, expand: bool) {
+    let ql = query.to_lowercase();
+    let tokens: Vec<&str> = ql.split_whitespace().collect();
+    if tokens.is_empty() { eprintln!("usage: memnir search <query> [--expand]"); std::process::exit(1); }
+    let mut hits: Vec<(String, i32, String)> = Vec::new();
+    for p in md_files() {
+        let Ok(c) = fs::read_to_string(&p) else { continue };
+        let file = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let fm = frontmatter(&c);
+        let name = fm_field(fm, "name").unwrap_or_default();
+        let desc = fm_field(fm, "description").unwrap_or_default();
+        let (score, fields) = score_match(&tokens, &file, &name, &desc, &c);
+        if score > 0 { hits.push((file, score, fields)); }
+    }
+    hits.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    hits.truncate(15);
+    if hits.is_empty() { println!("no matches for \"{}\"", query); return; }
+    let max = hits[0].1.max(1);
+    println!("🔍 \"{}\" — {} match(es)", query, hits.len());
+    for (file, score, fields) in &hits {
+        let bar = "█".repeat(((score * 10 / max).max(1)) as usize);
+        println!("  {:<46}{:<11}[{}]", file, bar, fields);
+    }
+    if expand {
+        let a = analyze();
+        let hitset: HashSet<String> = hits.iter().map(|h| h.0.clone()).collect();
+        let mut nb: BTreeMap<String, String> = BTreeMap::new();
+        for (f, t) in &a.edges {
+            if hitset.contains(f) && !hitset.contains(t) { nb.entry(t.clone()).or_insert_with(|| f.clone()); }
+            if hitset.contains(t) && !hitset.contains(f) { nb.entry(f.clone()).or_insert_with(|| t.clone()); }
+        }
+        if !nb.is_empty() {
+            println!("  ── related via [[links]] ──");
+            for (f, via) in nb { println!("  {:<46}↳ from {}", f, via); }
+        }
+    }
+}
+fn cmd_related(id: &str, depth: usize) {
+    let a = analyze();
+    let start = resolve(id).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if !a.mems.iter().any(|m| m.file == start) { eprintln!("not found: {}", id); std::process::exit(1); }
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    for (f, t) in &a.edges {
+        adj.entry(f.clone()).or_default().push(t.clone());
+        adj.entry(t.clone()).or_default().push(f.clone());
+    }
+    let mut seen: HashMap<String, usize> = HashMap::from([(start.clone(), 0)]);
+    let mut queue = std::collections::VecDeque::from([start.clone()]);
+    while let Some(cur) = queue.pop_front() {
+        let d = seen[&cur];
+        if d >= depth { continue; }
+        for n in adj.get(&cur).into_iter().flatten() {
+            if !seen.contains_key(n) { seen.insert(n.clone(), d + 1); queue.push_back(n.clone()); }
+        }
+    }
+    let mut out: Vec<(&String, &usize)> = seen.iter().filter(|(f, _)| **f != start).collect();
+    out.sort_by(|a, b| a.1.cmp(b.1).then(a.0.cmp(b.0)));
+    println!("🔗 related to {} (≤{} hops):", start, depth);
+    if out.is_empty() { println!("  (no [[links]] — isolated)"); }
+    for (f, d) in out { println!("  {}{}", "  ".repeat(*d), f); }
+}
+
 // ---------- dashboard ----------
 fn dash_html(serve: bool, token: &str) -> String {
     let a = analyze();
@@ -603,6 +682,10 @@ SCOPE                only `scope: shared` memories cross machines; default is lo
   local <id>         remove the tag — keep it on this machine only
   list               list shared vs local memories (shared show their origin machine)
 
+SEARCH
+  search <q> [--expand]    keyword search; --expand also pulls in [[link]]-related memories
+  related <id> [--depth N] memories connected to <id> via [[links]] (default depth 2)
+
 PROJECT
   link               symlink the current project's memory dir into the pool
 
@@ -640,6 +723,18 @@ fn main() {
         "autolink" => cmd_link(true),
         "status" => cmd_status(),
         "list" => cmd_list(),
+        "search" => {
+            let expand = args.iter().any(|a| a == "--expand");
+            let q = args.iter().skip(2).filter(|s| !s.starts_with("--")).cloned().collect::<Vec<_>>().join(" ");
+            cmd_search(&q, expand);
+        }
+        "related" => {
+            let id = args.get(2).filter(|s| !s.starts_with("--"))
+                .unwrap_or_else(|| { eprintln!("usage: memnir related <id> [--depth N]"); std::process::exit(1); });
+            let depth = args.iter().position(|a| a == "--depth").and_then(|i| args.get(i + 1))
+                .and_then(|p| p.parse().ok()).unwrap_or(2);
+            cmd_related(id, depth);
+        }
         "doctor" => cmd_doctor(args.iter().any(|a| a == "--check")),
         "dash" => cmd_dash(),
         "serve" => {
@@ -746,6 +841,19 @@ mod tests {
     fn jstr_escapes_specials() {
         assert_eq!(jstr("a\"b\\c\n"), "\"a\\\"b\\\\c\\n\"");
         assert_eq!(jstr("plain"), "\"plain\"");
+    }
+
+    #[test]
+    fn score_match_weights_and_fields() {
+        // token in name (6) + desc (3) + body (1)
+        let (s, f) = score_match(&["primekg"], "primekg_graph_agent.md", "PrimeKG agent", "uses primekg", "body about primekg");
+        assert_eq!(s, 10);
+        assert_eq!(f, "name+desc+body");
+        // no match
+        assert_eq!(score_match(&["zzz"], "a.md", "a", "b", "c"), (0, String::new()));
+        // body-only
+        let (s2, f2) = score_match(&["tenant"], "a.md", "a", "b", "the tenant id");
+        assert_eq!((s2, f2.as_str()), (1, "body"));
     }
 
     #[test]

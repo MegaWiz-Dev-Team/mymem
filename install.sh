@@ -49,6 +49,12 @@ for proj in "$HOME"/.claude/projects/*/; do
   ln -s "$SM" "$m"
 done
 
+echo "→ slash command (/recall)"
+if [ -f "$SELF_DIR/.claude/commands/recall.md" ]; then
+  mkdir -p "$HOME/.claude/commands"
+  cp "$SELF_DIR/.claude/commands/recall.md" "$HOME/.claude/commands/recall.md"
+fi
+
 echo "→ auto-sync hooks (SessionStart=start, Stop=push)"
 BIN="$BIN" LOG="$LOG" python3 - <<'PY'
 import json, os

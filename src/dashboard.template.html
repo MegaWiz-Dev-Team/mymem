@@ -26,8 +26,10 @@
  .cmddesc{color:#3f5b52;flex:1}
  .tag{color:#6b8c80;font-size:11px;border:1px solid #d3ece1;border-radius:5px;padding:0 6px;white-space:nowrap}
  .cmdrow button{padding:3px 10px;font-size:12px}
+ #q{border:1px solid #d3ece1;border-radius:8px;padding:5px 10px;font:13px inherit;background:#fff;color:#16322b;width:190px}
+ #q:focus{outline:0;border-color:#14b8a6}
 </style></head><body>
-<header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span><span id=tools style="margin-left:auto"></span></header>
+<header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span><input id=q placeholder="🔍 search memory…" style="margin-left:auto"><span id=tools></span></header>
 <div class=cards id=cards></div>
 <div class=wrap>
  <div class="panel" id=graph></div>
@@ -77,6 +79,15 @@ const net=new vis.Network($('#graph'),{nodes:new vis.DataSet(D.nodes),edges:new 
  edges:{color:{color:'#bfe6d8',highlight:'#14b8a6'},smooth:false,width:0.5},
  physics:{barnesHut:{gravitationalConstant:-8000,springLength:120},stabilization:{iterations:180}},
  interaction:{hover:true,tooltipDelay:80}});
+const qin=$('#q');
+qin.addEventListener('input',()=>{
+ const v=qin.value.trim().toLowerCase();
+ if(!v){net.unselectAll();net.fit({animation:true});return;}
+ const ids=D.nodes.filter(n=>n.id.toLowerCase().includes(v)||(n.label||'').toLowerCase().includes(v)).map(n=>n.id);
+ net.selectNodes(ids);
+ if(ids.length)net.fit({nodes:ids,animation:true});
+});
+qin.addEventListener('keydown',e=>{if(e.key==='Enter')e.preventDefault();});
 function act(cmd,id){return fetch('/api/'+cmd+'?t='+D.token+(id?'&id='+encodeURIComponent(id):''),{method:'POST'}).then(r=>r.json()).then(j=>{const t=$('#toast');if(t)t.textContent=j.msg||'';setTimeout(()=>location.reload(),500);}).catch(()=>{});}
 if(D.serve){
  $('#tools').innerHTML='<button onclick="act(\'sync\')">⟳ Sync</button> <button onclick="location.reload()">Refresh</button><span class=hint>click a node = toggle shared/local</span><span id=toast></span>';

@@ -110,6 +110,8 @@ peers       2 (reachable 2)   drift: 0 files
 | `memnir share <id>` | set a memory `scope: shared` and push it to the peers |
 | `memnir local <id>` | remove the tag → local again (won't sync) |
 | `memnir list` | list shared vs local memories (shared show their origin machine) |
+| `memnir search <q> [--expand]` | keyword search (name/desc/body ranked); `--expand` also pulls in `[[link]]`-related memories |
+| `memnir related <id> [--depth N]` | memories connected to `<id>` via `[[links]]` (BFS, default depth 2) |
 | `memnir status` | store path, counts, origins, peers |
 | `memnir help` | list all commands (also `-h` / `--help`) |
 | `memnir start` | autolink current project + sync (run by the SessionStart hook) |
@@ -129,6 +131,15 @@ peers       2 (reachable 2)   drift: 0 files
 Bound to `127.0.0.1` only, guarded by a random per-session token in the URL. Stop with `Ctrl-C`.
 
 `<id>` is a memory name, with or without `.md`. Every command also works via the short **`mn`** alias (e.g. `mn doctor`).
+
+## Search
+
+Three ways to find a memory — all instant (the pool is scanned in memory; no index/DB):
+
+- **`memnir search <q>`** — keyword search ranked by where it hits (name/desc > body). Add `--expand` to also surface memories that are `[[link]]`-connected to the hits, even without a keyword match — so search reaches related notes when your words don't line up.
+- **`memnir related <id>`** — walk the `[[links]]` graph from a memory (BFS, `--depth N`).
+- **Dashboard** (`memnir serve`/`dash`) — a search box highlights matching nodes and zooms to them; selecting a node lights up its links.
+- **`/recall <q>`** — a Claude Code slash command (installed by `install.sh` to `~/.claude/commands/`): runs `search --expand`, then Claude reads the top hit and answers, grounded in it.
 
 ## Scope: shared vs local 🔑
 
