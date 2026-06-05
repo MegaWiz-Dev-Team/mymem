@@ -4,11 +4,12 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const SSH_E: &str = "ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new";
 const SSH_ARGS: [&str; 6] = [
@@ -391,7 +392,7 @@ fn jstr(s: &str) -> String {
     }
     o.push('"'); o
 }
-fn cmd_dash() {
+fn dash_html(serve: bool, token: &str) -> String {
     let a = analyze();
     let color = |t: &str| match t { "project" => "#14b8a6", "reference" => "#22c55e", "feedback" => "#f59e0b", _ => "#94a3b8" };
     let mut nodes = String::from("[");
@@ -417,13 +418,94 @@ fn cmd_dash() {
     top.sort_by_key(|m| std::cmp::Reverse(m.tok));
     let top_json: Vec<String> = top.iter().take(12).map(|m| format!("[{},{}]", jstr(&m.file), m.tok)).collect();
     let data = format!(
-        "{{\"nodes\":{},\"edges\":{},\"types\":{{{}}},\"shared\":{},\"n\":{},\"idx_tok\":{},\"pool_tok\":{},\"broken\":{},\"isolated\":{},\"top\":[{}]}}",
-        nodes, edges, types.join(","), a.shared, a.n, a.idx_tok, a.pool_tok, a.broken, a.isolated.len(), top_json.join(",")
+        "{{\"nodes\":{},\"edges\":{},\"types\":{{{}}},\"shared\":{},\"n\":{},\"idx_tok\":{},\"pool_tok\":{},\"broken\":{},\"isolated\":{},\"top\":[{}],\"serve\":{},\"token\":{}}}",
+        nodes, edges, types.join(","), a.shared, a.n, a.idx_tok, a.pool_tok, a.broken, a.isolated.len(), top_json.join(","), serve, jstr(token)
     );
-    let html = HTML.replace("/*DATA*/", &data);
+    HTML.replace("/*DATA*/", &data)
+}
+fn cmd_dash() {
     let out = sm().join("dashboard.html");
-    let _ = fs::write(&out, html);
+    let _ = fs::write(&out, dash_html(false, ""));
     println!("{}", out.display());
+}
+
+// ---------- serve (interactive dashboard) ----------
+fn rand_token() -> String {
+    let mut b = [0u8; 16];
+    if let Ok(mut f) = fs::File::open("/dev/urandom") { let _ = f.read_exact(&mut b); }
+    b.iter().map(|x| format!("{:02x}", x)).collect()
+}
+fn urldecode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'%' if i + 2 < b.len() => {
+                if let Ok(c) = u8::from_str_radix(&s[i + 1..i + 3], 16) { out.push(c as char); i += 3; continue; }
+                out.push('%'); i += 1;
+            }
+            b'+' => { out.push(' '); i += 1; }
+            c => { out.push(c as char); i += 1; }
+        }
+    }
+    out
+}
+fn toggle_scope(id: &str) -> String {
+    let f = resolve(id);
+    if !f.exists() { return format!("not found: {}", id); }
+    let t = fs::read_to_string(&f).unwrap_or_default();
+    let shared = has_scope_shared(frontmatter(&t));
+    set_scope(&f, !shared);
+    regen_index();
+    if !shared { push(); format!("{} → shared (pushed)", id) } else { format!("{} → local", id) }
+}
+fn handle_conn(s: &mut std::net::TcpStream, token: &str) {
+    let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut buf = [0u8; 4096];
+    let n = s.read(&mut buf).unwrap_or(0);
+    let req = String::from_utf8_lossy(&buf[..n]);
+    let line = req.lines().next().unwrap_or("");
+    let target = line.split_whitespace().nth(1).unwrap_or("/");
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let qp = |k: &str| query.split('&').find_map(|kv| kv.strip_prefix(&format!("{}=", k)));
+    let (status, ctype, body) = if path == "/" {
+        ("200 OK", "text/html; charset=utf-8", dash_html(true, token))
+    } else if let Some(action) = path.strip_prefix("/api/") {
+        if qp("t") != Some(token) {
+            ("403 Forbidden", "application/json", "{\"ok\":false,\"msg\":\"bad token\"}".to_string())
+        } else {
+            let id = qp("id").map(urldecode).unwrap_or_default();
+            let msg = match action {
+                "sync" => { push(); pull(); "synced".to_string() }
+                "toggle" => toggle_scope(&id),
+                "share" => { let f = resolve(&id); if f.exists() { set_scope(&f, true); regen_index(); push(); format!("{} → shared", id) } else { format!("not found: {}", id) } }
+                "local" => { let f = resolve(&id); if f.exists() { set_scope(&f, false); regen_index(); format!("{} → local", id) } else { format!("not found: {}", id) } }
+                _ => "unknown action".to_string(),
+            };
+            ("200 OK", "application/json", format!("{{\"ok\":true,\"msg\":{}}}", jstr(&msg)))
+        }
+    } else {
+        ("404 Not Found", "text/plain", "not found".to_string())
+    };
+    let resp = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status, ctype, body.as_bytes().len(), body);
+    let _ = s.write_all(resp.as_bytes());
+}
+fn cmd_serve(port: u16) {
+    let token = rand_token();
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => { eprintln!("memnir serve: cannot bind {} — {}", addr, e); std::process::exit(1); }
+    };
+    let url = format!("http://{}/?t={}", addr, token);
+    println!("Memnir interactive dashboard → {}", url);
+    println!("(localhost only · Ctrl-C to stop)");
+    let _ = Command::new("open").arg(&url).status();
+    for stream in listener.incoming() {
+        if let Ok(mut s) = stream { handle_conn(&mut s, &token); }
+    }
 }
 
 fn main() {
@@ -442,7 +524,12 @@ fn main() {
         "list" => cmd_list(),
         "doctor" => cmd_doctor(args.iter().any(|a| a == "--check")),
         "dash" => cmd_dash(),
-        _ => { eprintln!("usage: memnir [sync|push|pull|start|link|status|list|share <id>|local <id>|doctor [--check]|dash]"); std::process::exit(1); }
+        "serve" => {
+            let port = args.iter().position(|a| a == "--port").and_then(|i| args.get(i + 1))
+                .and_then(|p| p.parse().ok()).unwrap_or(7177);
+            cmd_serve(port);
+        }
+        _ => { eprintln!("usage: memnir [sync|push|pull|start|link|status|list|share <id>|local <id>|doctor [--check]|dash|serve [--port N]]"); std::process::exit(1); }
     }
 }
 
@@ -465,8 +552,12 @@ const HTML: &str = r###"<!doctype html><html><head><meta charset=utf-8>
  #graph{flex:1;min-width:520px;height:560px}
  .side{width:300px} .row{display:flex;justify-content:space-between;margin:4px 0;font-size:13px}
  .legend span{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+ button{background:#14b8a6;color:#fff;border:0;border-radius:8px;padding:6px 12px;font:13px inherit;cursor:pointer}
+ button:hover{background:#0f9e8e}
+ #toast{margin-left:10px;color:#0f766e;font-size:13px}
+ .hint{color:#6b8c80;font-size:12px;margin-left:6px}
 </style></head><body>
-<header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span></header>
+<header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span><span id=tools style="margin-left:auto"></span></header>
 <div class=cards id=cards></div>
 <div class=wrap>
  <div class="panel" id=graph></div>
@@ -499,9 +590,14 @@ const tmx=Math.max(...D.top.map(t=>t[1]));
 $('#top').innerHTML=D.top.map(([f,t])=>
  `<div class=row><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${f}</span><span>${t}</span></div>
   <div class=bar><span style="width:${t/tmx*100}%;background:#2dd4a7"></span></div>`).join('');
-new vis.Network($('#graph'),{nodes:new vis.DataSet(D.nodes),edges:new vis.DataSet(D.edges)},{
+const net=new vis.Network($('#graph'),{nodes:new vis.DataSet(D.nodes),edges:new vis.DataSet(D.edges)},{
  nodes:{scaling:{min:6,max:34},font:{color:'#16322b',size:11}},
  edges:{color:{color:'#bfe6d8',highlight:'#14b8a6'},smooth:false,width:0.5},
  physics:{barnesHut:{gravitationalConstant:-8000,springLength:120},stabilization:{iterations:180}},
  interaction:{hover:true,tooltipDelay:80}});
+function act(cmd,id){return fetch('/api/'+cmd+'?t='+D.token+(id?'&id='+encodeURIComponent(id):''),{method:'POST'}).then(r=>r.json()).then(j=>{const t=$('#toast');if(t)t.textContent=j.msg||'';setTimeout(()=>location.reload(),500);}).catch(()=>{});}
+if(D.serve){
+ $('#tools').innerHTML='<button onclick="act(\'sync\')">⟳ Sync</button> <button onclick="location.reload()">Refresh</button><span class=hint>click a node = toggle shared/local</span><span id=toast></span>';
+ net.on('click',p=>{if(p.nodes.length)act('toggle',p.nodes[0]);});
+}
 </script></body></html>"###;

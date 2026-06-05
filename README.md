@@ -108,7 +108,18 @@ sync        peer you@other-mac ✓   drift: 0 files
 | `memnir start` | autolink current project + sync (run by the SessionStart hook) |
 | `memnir link` | manually symlink the current project into the pool |
 | `memnir doctor [--check]` | health report + actions (`--check` = quiet unless there's an issue; for hooks) |
-| `memnir dash` | write `dashboard.html` (knowledge graph + token visualization) |
+| `memnir dash` | write a static `dashboard.html` (knowledge graph + token visualization) |
+| `memnir serve [--port N]` | **interactive** dashboard on `127.0.0.1` — click a node to toggle shared/local, buttons to sync |
+
+### Interactive dashboard
+
+`memnir serve` runs a tiny localhost HTTP server (pure std) and opens the dashboard in your browser. Unlike the static `dash`, it can run commands:
+
+- **click any node** → toggle that memory between shared / local (and push if it became shared)
+- **⟳ Sync** button → two-way sync with the peer
+- **Refresh** → reload with fresh data
+
+Bound to `127.0.0.1` only, guarded by a random per-session token in the URL. Stop with `Ctrl-C`.
 
 `<id>` is a memory name, with or without `.md`.
 
