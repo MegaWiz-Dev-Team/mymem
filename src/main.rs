@@ -597,6 +597,11 @@ const HTML: &str = r###"<!doctype html><html><head><meta charset=utf-8>
  button:hover{background:#0f9e8e}
  #toast{margin-left:10px;color:#0f766e;font-size:13px}
  .hint{color:#6b8c80;font-size:12px;margin-left:6px}
+ .cmdrow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px}
+ .cmdrow code{background:#e6f4ee;color:#0f766e;padding:1px 6px;border-radius:5px;white-space:nowrap}
+ .cmddesc{color:#3f5b52;flex:1}
+ .tag{color:#6b8c80;font-size:11px;border:1px solid #d3ece1;border-radius:5px;padding:0 6px;white-space:nowrap}
+ .cmdrow button{padding:3px 10px;font-size:12px}
 </style></head><body>
 <header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span><span id=tools style="margin-left:auto"></span></header>
 <div class=cards id=cards></div>
@@ -610,6 +615,8 @@ const HTML: &str = r###"<!doctype html><html><head><meta charset=utf-8>
      <span style="background:#22c55e"></span>reference
      <span style="background:#f59e0b"></span>feedback &nbsp; <span style="background:#e11d48"></span>=local border
    </div>
+   <b style="display:block;margin-top:16px">Commands</b><div id=cmds></div>
+   <div class=hint style="display:block;margin:8px 0 0 0">node = คลิก node ใน graph · graph = แผนที่นี้ · header = ด้านบน · hook = อัตโนมัติ · cli = พิมพ์ใน terminal · here = หน้านี้</div>
  </div>
 </div>
 <script>
@@ -631,6 +638,12 @@ const tmx=Math.max(...D.top.map(t=>t[1]));
 $('#top').innerHTML=D.top.map(([f,t])=>
  `<div class=row><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${f}</span><span>${t}</span></div>
   <div class=bar><span style="width:${t/tmx*100}%;background:#2dd4a7"></span></div>`).join('');
+const CMDS=[['sync','push + pull shared','run'],['share <id>','mark shared + push','node'],['local <id>','keep on this machine','node'],['list','shared vs local','graph'],['doctor','health + actions','refresh'],['status','counts / peer','header'],['link','join current project','hook'],['start','autolink + sync','hook'],['dash','static html file','cli'],['serve','this page','here'],['help','all commands','cli']];
+$('#cmds').innerHTML=CMDS.map(([c,d,a])=>{
+ if(!D.serve&&(a==='run'||a==='refresh'))a='cli';
+ const btn=a==='run'?'<button onclick="act(\'sync\')">run</button>':a==='refresh'?'<button onclick="location.reload()">run</button>':`<span class=tag>${a}</span>`;
+ return `<div class=cmdrow><code>${c.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code><span class=cmddesc>${d}</span>${btn}</div>`;
+}).join('');
 const net=new vis.Network($('#graph'),{nodes:new vis.DataSet(D.nodes),edges:new vis.DataSet(D.edges)},{
  nodes:{scaling:{min:6,max:34},font:{color:'#16322b',size:11}},
  edges:{color:{color:'#bfe6d8',highlight:'#14b8a6'},smooth:false,width:0.5},
