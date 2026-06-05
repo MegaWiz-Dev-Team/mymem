@@ -22,8 +22,9 @@ else
 fi
 chmod +x "$BIN"
 
-echo "→ shell alias"
+echo "→ shell aliases (memnir, mn)"
 grep -q 'alias memnir=' "$HOME/.zshrc" 2>/dev/null || echo 'alias memnir="$HOME/.local/bin/memnir"' >> "$HOME/.zshrc"
+grep -q 'alias mn=' "$HOME/.zshrc" 2>/dev/null || echo 'alias mn="$HOME/.local/bin/memnir"' >> "$HOME/.zshrc"
 
 echo "→ peer config (~/.claude/memnir.conf)"
 CONF="$HOME/.claude/memnir.conf"
