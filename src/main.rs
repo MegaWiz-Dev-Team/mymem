@@ -451,6 +451,24 @@ fn urldecode(s: &str) -> String {
     }
     out
 }
+fn run_memnir(cmdline: &str) -> String {
+    let mut parts: Vec<&str> = cmdline.split_whitespace().collect();
+    if parts.first() == Some(&"memnir") { parts.remove(0); }
+    if parts.is_empty() { return "type a memnir command — e.g. doctor, list, share <id>, sync, help".to_string(); }
+    const ALLOWED: [&str; 12] = ["sync", "push", "pull", "start", "link", "status", "list", "share", "local", "doctor", "dash", "help"];
+    if !ALLOWED.contains(&parts[0]) {
+        return format!("'{}' is not allowed here — this console runs memnir subcommands only:\n  {}", parts[0], ALLOWED.join("  "));
+    }
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("memnir"));
+    match Command::new(exe).args(&parts).output() {
+        Ok(o) => {
+            let mut s = String::from_utf8_lossy(&o.stdout).to_string();
+            s.push_str(&String::from_utf8_lossy(&o.stderr));
+            if s.trim().is_empty() { "(done — no output)".to_string() } else { s.trim_end().to_string() }
+        }
+        Err(e) => format!("error: {}", e),
+    }
+}
 fn toggle_scope(id: &str) -> String {
     let f = resolve(id);
     if !f.exists() { return format!("not found: {}", id); }
@@ -478,6 +496,7 @@ fn handle_conn(s: &mut std::net::TcpStream, token: &str) {
             let id = qp("id").map(urldecode).unwrap_or_default();
             let msg = match action {
                 "sync" => { push(); pull(); "synced".to_string() }
+                "run" => run_memnir(&qp("cmd").map(urldecode).unwrap_or_default()),
                 "toggle" => toggle_scope(&id),
                 "share" => { let f = resolve(&id); if f.exists() { set_scope(&f, true); regen_index(); push(); format!("{} → shared", id) } else { format!("not found: {}", id) } }
                 "local" => { let f = resolve(&id); if f.exists() { set_scope(&f, false); regen_index(); format!("{} → local", id) } else { format!("not found: {}", id) } }
@@ -602,6 +621,14 @@ const HTML: &str = r###"<!doctype html><html><head><meta charset=utf-8>
  .cmddesc{color:#3f5b52;flex:1}
  .tag{color:#6b8c80;font-size:11px;border:1px solid #d3ece1;border-radius:5px;padding:0 6px;white-space:nowrap}
  .cmdrow button{padding:3px 10px;font-size:12px}
+ .cmdrow code{cursor:pointer}
+ #consolewrap{margin:0 20px 20px;display:none}
+ #cout{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;font-size:12.5px;color:#234;max-height:300px;min-height:80px;overflow:auto;line-height:1.55}
+ #cout .cmd{color:#0f766e;font-weight:600}
+ #cout .err{color:#e11d48}
+ .crow{display:flex;gap:8px;align-items:center;border-top:1px solid #e6f4ee;padding-top:9px;margin-top:9px}
+ .crow .ps{color:#0f766e;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+ #cin{flex:1;border:0;outline:0;background:transparent;font:13px ui-monospace,Menlo,monospace;color:#16322b}
 </style></head><body>
 <header><h1><svg width="24" height="24" viewBox="0 0 64 64" style="vertical-align:-5px;margin-right:9px"><path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/><circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/><circle cx="32" cy="37" r="16" fill="none" stroke="#2dd4a7" stroke-width="2.5" opacity=".9"/><circle cx="32" cy="37" r="8.5" fill="none" stroke="#5eead4" stroke-width="2.5"/><circle cx="32" cy="37" r="3" fill="#0f766e"/></svg>Memnir Dashboard</h1><span id=sub class=l style="color:#6b8c80"></span><span id=tools style="margin-left:auto"></span></header>
 <div class=cards id=cards></div>
@@ -618,6 +645,10 @@ const HTML: &str = r###"<!doctype html><html><head><meta charset=utf-8>
    <b style="display:block;margin-top:16px">Commands</b><div id=cmds></div>
    <div class=hint style="display:block;margin:8px 0 0 0">node = คลิก node ใน graph · graph = แผนที่นี้ · header = ด้านบน · hook = อัตโนมัติ · cli = พิมพ์ใน terminal · here = หน้านี้</div>
  </div>
+</div>
+<div class="panel" id=consolewrap>
+  <div id=cout></div>
+  <div class=crow><span class=ps>memnir ❯</span><input id=cin autocomplete=off autocapitalize=off spellcheck=false placeholder="doctor   ·   list   ·   share <id>   ·   sync   ·   help"></div>
 </div>
 <script>
 const D=/*DATA*/;
@@ -642,7 +673,7 @@ const CMDS=[['sync','push + pull shared','run'],['share <id>','mark shared + pus
 $('#cmds').innerHTML=CMDS.map(([c,d,a])=>{
  if(!D.serve&&(a==='run'||a==='refresh'))a='cli';
  const btn=a==='run'?'<button onclick="act(\'sync\')">run</button>':a==='refresh'?'<button onclick="location.reload()">run</button>':`<span class=tag>${a}</span>`;
- return `<div class=cmdrow><code>${c.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code><span class=cmddesc>${d}</span>${btn}</div>`;
+ return `<div class=cmdrow><code onclick="var i=document.getElementById('cin');if(i){i.value=this.textContent;i.focus()}">${c.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code><span class=cmddesc>${d}</span>${btn}</div>`;
 }).join('');
 const net=new vis.Network($('#graph'),{nodes:new vis.DataSet(D.nodes),edges:new vis.DataSet(D.edges)},{
  nodes:{scaling:{min:6,max:34},font:{color:'#16322b',size:11}},
@@ -653,5 +684,23 @@ function act(cmd,id){return fetch('/api/'+cmd+'?t='+D.token+(id?'&id='+encodeURI
 if(D.serve){
  $('#tools').innerHTML='<button onclick="act(\'sync\')">⟳ Sync</button> <button onclick="location.reload()">Refresh</button><span class=hint>click a node = toggle shared/local</span><span id=toast></span>';
  net.on('click',p=>{if(p.nodes.length)act('toggle',p.nodes[0]);});
+ const cw=$('#consolewrap'); cw.style.display='block';
+ const cout=$('#cout'), cin=$('#cin');
+ const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+ cout.innerHTML='<span style="color:#6b8c80">memnir console — รันได้เฉพาะ memnir subcommands · ↑↓ history · คลิกชื่อ command ทางขวาเพื่อ prefill</span>';
+ const append=h=>{cout.innerHTML+='\n'+h;cout.scrollTop=cout.scrollHeight;};
+ let hist=[],hi=0;
+ cin.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+   const line=cin.value.trim(); if(!line)return;
+   hist.push(line); hi=hist.length; cin.value='';
+   append('<span class=cmd>memnir ❯ '+esc(line)+'</span>');
+   fetch('/api/run?t='+D.token+'&cmd='+encodeURIComponent(line),{method:'POST'})
+    .then(r=>r.json()).then(j=>{append(esc(j.msg||''));
+     if(/^(memnir\s+)?(sync|share|local|push|pull)\b/.test(line))setTimeout(()=>location.reload(),800);});
+  } else if(e.key==='ArrowUp'){if(hi>0){hi--;cin.value=hist[hi]||'';}e.preventDefault();}
+  else if(e.key==='ArrowDown'){if(hi<hist.length-1){hi++;cin.value=hist[hi]||'';}else{hi=hist.length;cin.value='';}e.preventDefault();}
+ });
+ cin.focus();
 }
 </script></body></html>"###;
