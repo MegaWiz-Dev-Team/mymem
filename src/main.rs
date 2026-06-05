@@ -508,6 +508,46 @@ fn cmd_serve(port: u16) {
     }
 }
 
+fn cmd_help() {
+    print!(r#"memnir — shared Claude memory across machines + sessions, over Tailscale
+
+USAGE
+  memnir <command> [args]
+
+SYNC
+  sync                push + pull shared memories with the peer, then rebuild the index
+  push               send shared memories to the peer (one way)
+  pull               fetch shared memories from the peer (one way)
+  start              autolink current project + sync   (run by the SessionStart hook)
+
+SCOPE                only `scope: shared` memories cross machines; default is local
+  share <id>         mark a memory shared and push it to the peer
+  local <id>         remove the tag — keep it on this machine only
+  list               list shared vs local memories
+
+PROJECT
+  link               symlink the current project's memory dir into the pool
+
+INSIGHT
+  doctor [--check]   health report: tokens, broken links, oversized, suggested actions
+                     (--check prints only when something needs attention; for hooks)
+  dash               write a static dashboard.html (knowledge graph + token viz)
+  serve [--port N]   interactive dashboard on 127.0.0.1 (click node = toggle, sync button)
+
+INFO
+  status             store path, memory counts (shared:local), peer
+  help               show this help
+
+CONFIG
+  peer               read from ~/.claude/memnir.conf  (or env MEMNIR_PEER)  e.g. user@tailscale-host
+
+EXAMPLES
+  memnir share project_firestore_envs
+  memnir doctor
+  memnir serve
+"#);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("sync");
@@ -529,7 +569,8 @@ fn main() {
                 .and_then(|p| p.parse().ok()).unwrap_or(7177);
             cmd_serve(port);
         }
-        _ => { eprintln!("usage: memnir [sync|push|pull|start|link|status|list|share <id>|local <id>|doctor [--check]|dash|serve [--port N]]"); std::process::exit(1); }
+        "help" | "-h" | "--help" => cmd_help(),
+        other => { eprintln!("memnir: unknown command '{}'\n", other); cmd_help(); std::process::exit(1); }
     }
 }
 

@@ -105,6 +105,7 @@ sync        peer you@other-mac ✓   drift: 0 files
 | `memnir local <id>` | remove the tag → local again (won't sync) |
 | `memnir list` | list shared vs local memories |
 | `memnir status` | store path, counts (shared:local), peer |
+| `memnir help` | list all commands (also `-h` / `--help`) |
 | `memnir start` | autolink current project + sync (run by the SessionStart hook) |
 | `memnir link` | manually symlink the current project into the pool |
 | `memnir doctor [--check]` | health report + actions (`--check` = quiet unless there's an issue; for hooks) |
