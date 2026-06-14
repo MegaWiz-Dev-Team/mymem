@@ -34,6 +34,25 @@ fn hostname() -> String {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default()
 }
+// Human-readable label for the OS this binary runs on. WSL2 is still target_os
+// "linux", so detect it at runtime via /proc/version (Claude Code runs Windows-side).
+fn os_label() -> String {
+    let arch = std::env::consts::ARCH;
+    match std::env::consts::OS {
+        "macos" => {
+            let chip = match arch { "aarch64" => "Apple Silicon", "x86_64" => "Intel", a => a };
+            format!("macOS ({})", chip)
+        }
+        "linux" => {
+            let wsl = fs::read_to_string("/proc/version")
+                .map(|v| v.to_lowercase().contains("microsoft"))
+                .unwrap_or(false);
+            if wsl { "Linux (WSL2)".to_string() } else { format!("Linux ({})", arch) }
+        }
+        "windows" => format!("Windows ({})", arch),
+        other => format!("{} ({})", other, arch),
+    }
+}
 // All peers (the other machines). Mesh: every machine lists every other one.
 // env MEMNIR_PEER (comma/space/newline separated) overrides; else every
 // non-comment line of ~/.claude/memnir.conf.
@@ -476,7 +495,7 @@ fn cmd_list() {
 }
 fn cmd_sync() {
     let ps = peers();
-    println!("host={}  peers={}", hostname(), if ps.is_empty() { "(none)".to_string() } else { ps.join(",") });
+    println!("host={}  os={}  peers={}", hostname(), os_label(), if ps.is_empty() { "(none)".to_string() } else { ps.join(",") });
     push();
     pull();
     let a = analyze();
@@ -525,7 +544,7 @@ fn cmd_doctor(check: bool) {
         return;
     }
     let dot = |v: usize, t: usize| if v > t { "🔴" } else if v * 10 > t * 6 { "🟠" } else { "🟢" };
-    println!("MEMNIR HEALTH ───────────────────────────────── {}", hostname());
+    println!("MEMNIR HEALTH ───────────────────────────────── {} · {}", hostname(), os_label());
     println!("inventory   {} memories   {}", a.n, fmt_counts(&a.types));
     println!("scope       shared:{}   local:{}", a.shared, a.n - a.shared);
     println!("origins     {}", fmt_counts(&a.origins));
@@ -739,8 +758,8 @@ fn dash_html(serve: bool, token: &str) -> String {
     top.sort_by_key(|m| std::cmp::Reverse(m.tok));
     let top_json = top.iter().take(TOP_N).map(|m| format!("[{},{}]", jstr(&m.file), m.tok)).collect::<Vec<_>>().join(",");
     let data = format!(
-        "{{\"nodes\":[{}],\"edges\":[{}],\"types\":{{{}}},\"origins\":{{{}}},\"shared\":{},\"n\":{},\"idx_tok\":{},\"pool_tok\":{},\"broken\":{},\"isolated\":{},\"top\":[{}],\"serve\":{},\"token\":{}}}",
-        nodes, edges, types, origins, a.shared, a.n, a.idx_tok, a.pool_tok, a.broken, a.isolated.len(), top_json, serve, jstr(token)
+        "{{\"nodes\":[{}],\"edges\":[{}],\"types\":{{{}}},\"origins\":{{{}}},\"shared\":{},\"n\":{},\"idx_tok\":{},\"pool_tok\":{},\"broken\":{},\"isolated\":{},\"top\":[{}],\"serve\":{},\"token\":{},\"host\":{},\"os\":{}}}",
+        nodes, edges, types, origins, a.shared, a.n, a.idx_tok, a.pool_tok, a.broken, a.isolated.len(), top_json, serve, jstr(token), jstr(&hostname()), jstr(&os_label())
     );
     HTML.replace("/*DATA*/", &data)
 }

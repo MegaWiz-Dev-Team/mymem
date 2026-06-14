@@ -4,6 +4,9 @@ All notable changes to Memnir are documented here. Format follows [Keep a Change
 
 ## [Unreleased]
 
+### Added
+- **OS awareness** — `status`, `doctor`, and the dashboard subtitle now report the OS this machine runs on (`macOS (Apple Silicon)` / `(Intel)`, `Linux (WSL2)`, `Linux (x86_64)`, …) next to the hostname. WSL2 is detected at runtime via `/proc/version`.
+
 ## [0.3.0] — 2026-06-14
 
 ### Added
