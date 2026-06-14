@@ -56,6 +56,23 @@ cd memnir
 
 > No `cargo` on a machine but same arch (Apple Silicon)? Build once and copy the binary: `scp target/release/memnir other-mac:.local/bin/`. `install.sh` falls back to a prebuilt binary if `cargo` is missing.
 
+Each release attaches prebuilt binaries for **macOS** (arm64 + Intel) and **Linux x86_64** (what WSL2 uses) — see [Releases](https://github.com/MegaWiz-Dev-Team/memnir/releases). `install.sh` runs a **preflight** first and, if a prerequisite is missing, exits without changing anything and prints exactly what to install.
+
+### Linux / WSL2
+
+The Rust core is POSIX and builds natively on WSL2 (Ubuntu). `install.sh` detects WSL2, wires the alias into `~/.bashrc` instead of `~/.zshrc`, and shells out to the same `rsync`/`ssh`.
+
+```bash
+# one-time toolchain (Ubuntu/Debian under WSL2):
+sudo apt-get update && sudo apt-get install -y rsync openssh-client python3 build-essential
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . "$HOME/.cargo/env"
+
+git clone https://github.com/MegaWiz-Dev-Team/memnir && cd memnir
+./install.sh
+```
+
+> ⚠️ **Run Claude Code *inside* WSL2.** Memnir manages `~/.claude/memnir` in the WSL home. The Windows desktop app stores memory at `C:\Users\<you>\.claude` (`/mnt/c/Users/<you>/.claude` from WSL) — that path is **not** bridged, so hooks installed from WSL would target the wrong `settings.json`. `install.sh` warns if it detects this case.
+
 ### Configure peers (mesh)
 
 Each machine lists **every other machine** — one `user@tailscale-host` per line. For 2 machines that's a single line each; for N machines it's a full mesh.
@@ -208,20 +225,20 @@ A `[[link]]` is "broken" when no memory matches it. `fix-links` only rewrites a 
 - Whatever was in a project's `memory/` before linking is backed up as `memory.bak.<ts>`.
 - Logs at `~/.claude/memnir.log`.
 
-## Requirements (macOS)
+## Requirements (macOS / WSL2)
 
-> ⚠️ **Supported on macOS only.** The binary relies on Unix symlinks, `/dev/urandom`, and `hostname -s`, and the setup assumes `rsync` + `zsh` + Remote Login + the Tailscale Mac app.
+> ✅ **macOS and Linux / WSL2** are supported — `install.sh` detects the platform and picks the right shell rc, dependencies, and binary. See [Linux / WSL2](#linux--wsl2) above. The binary relies on Unix symlinks, `/dev/urandom`, and `hostname`, plus `rsync` + `ssh` + Tailscale for sync.
 >
-> **Other platforms:** a Linux / **WSL2** machine can join the mesh with small tweaks (the Rust core is mostly POSIX — only the `open` browser call is Mac-specific). **Native Windows** is not supported yet — it would need a port (symlinks → junctions, bundled `rsync`, `COMPUTERNAME`/`USERPROFILE`). Note that to share with a WSL node, Claude Code must also run inside WSL so its memory lives at the WSL `~/.claude`.
+> ⚠️ **Native Windows** is not supported yet — `src/main.rs` uses `std::os::unix::fs::symlink` unconditionally and won't compile there; it would need a port (symlinks → junctions, bundled `rsync`, `USERPROFILE`). Use **WSL2** instead, and run Claude Code inside WSL so its memory lives at the WSL `~/.claude`.
 
 | need | notes |
 |---|---|
-| **macOS** | Intel or Apple Silicon |
-| **Rust / cargo** | to build (`rustup` or `brew install rust`) — or copy a prebuilt binary between same-arch machines |
-| **zsh** | default macOS shell; the `memnir` alias goes in `~/.zshrc` |
-| **rsync + ssh** | ship with macOS |
-| **python3** | used by `install.sh` to merge hooks into `settings.json` (ships with Command Line Tools — `xcode-select --install`) |
-| **[Tailscale](https://tailscale.com)** | the **Mac app** on both machines, on the same tailnet |
+| **OS** | macOS (Intel or Apple Silicon), or Linux / **WSL2** (x86_64) |
+| **Rust / cargo** | to build (`rustup` or `brew install rust`) — or use the prebuilt binary for your platform from Releases. WSL2 also needs `build-essential` for the C linker (`cc`) |
+| **shell** | the `memnir` alias goes in `~/.zshrc` (macOS) or `~/.bashrc` (WSL2) — `install.sh` picks the right one |
+| **rsync + ssh** | ship with macOS; on WSL2 `sudo apt-get install rsync openssh-client` |
+| **python3** | used by `install.sh` to merge hooks into `settings.json` (macOS: `xcode-select --install`; WSL2: `sudo apt-get install python3`) |
+| **[Tailscale](https://tailscale.com)** | on both machines, same tailnet — the **Mac app** on macOS, the **Linux client** under WSL2 |
 | **Remote Login** | enable on the machine you sync *to*: System Settings → General → Sharing → Remote Login (enable on both for two-way) |
 | **SSH key auth** | passwordless between every pair, both directions (`ssh-keygen` + the public key in the other machine's `~/.ssh/authorized_keys`) |
 | **peers** | `~/.claude/memnir.conf` — one `user@tailscale-host` per line (mesh: list every other machine) — or env `MEMNIR_PEER` |

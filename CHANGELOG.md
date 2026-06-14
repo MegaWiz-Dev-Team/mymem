@@ -2,6 +2,14 @@
 
 All notable changes to Memnir are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versioning is [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Added
+- **WSL2 install support** — `install.sh` detects WSL2 (`/proc/version` + `WSL_DISTRO_NAME`), wires the alias into the actual login shell rc (`~/.bashrc` on WSL2, `~/.zshrc` on macOS), and warns when `~/.claude` is absent but a Windows-side `/mnt/c/Users/*/.claude` exists (hooks would otherwise land in the wrong `settings.json`). (#1, #3)
+- **Installer preflight** — validates `rsync`/`python3`/cargo-or-prebuilt before touching the system, with a C-linker (`cc`) check on Linux and an apt one-liner on failure; on any miss it exits with "nothing was changed". `tailscale`/`ssh` are reported as warnings. (#2, #3)
+- **Release CI** (`.github/workflows/release.yml`) — builds prebuilt binaries on every `v*` tag for `aarch64-apple-darwin`, `x86_64-apple-darwin`, and `x86_64-unknown-linux-gnu` (WSL2), with SHA-256 sidecars. Native Windows is intentionally excluded until `src/main.rs` drops the unconditional Unix `symlink`. (#3)
+- README **Linux / WSL2** section (EN + TH) and updated requirements.
+
 ## [0.2.0] — 2026-06-06
 
 ### Added
