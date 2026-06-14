@@ -1,7 +1,9 @@
 name: release
 
 # Build prebuilt binaries on every version tag and attach them to the release.
-# Covers macOS (arm64 + Intel) and Linux x86_64 (which is what WSL2 uses).
+# Covers macOS (arm64 + Intel) and Linux x86_64 as a static musl binary — no
+# glibc dependency, so it runs on any distro (e.g. WSL2 Ubuntu 22.04, glibc 2.35;
+# a glibc build on the 24.04 runner would fail there with GLIBC_2.39 not found).
 # Native Windows (x86_64-pc-windows-msvc) is intentionally omitted: src/main.rs
 # uses std::os::unix::fs::symlink and will not compile there yet (see issue #1).
 
@@ -36,10 +38,14 @@ jobs:
             os: macos-14
           - target: x86_64-apple-darwin
             os: macos-14
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}

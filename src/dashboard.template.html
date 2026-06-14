@@ -49,7 +49,8 @@
 <script>
 const D=/*DATA*/;
 const $=s=>document.querySelector(s);
-$('#sub').textContent=`${D.n} memories · shared ${D.shared}/${D.n} · ${D.edges.length} links`;
+const host=[D.host,D.os].filter(Boolean).join(' · ');
+$('#sub').textContent=(host?host+' · ':'')+`${D.n} memories · shared ${D.shared}/${D.n} · ${D.edges.length} links`;
 const idxK=(D.idx_tok/1000).toFixed(1), warn=D.idx_tok>12000;
 $('#cards').innerHTML=`
  <div class=card><div class="v ${warn?'warn':'ok'}">${idxK}k</div><div class=l>index tok / session ${warn?'🔴':'🟢'}</div>
