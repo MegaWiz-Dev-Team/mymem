@@ -1,6 +1,6 @@
 [package]
 name = "memnir"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Shared Claude memory across machines + sessions over Tailscale (scope-filtered sync, compact-index, doctor, dashboard)"
 

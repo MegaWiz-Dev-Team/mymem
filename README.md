@@ -2,7 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/MegaWiz-Dev-Team/memnir?color=14b8a6)](https://github.com/MegaWiz-Dev-Team/memnir/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-![platform](https://img.shields.io/badge/platform-macOS-black)
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%2FWSL2-black)
 ![rust](https://img.shields.io/badge/rust-pure%20std-orange)
 
 *memory + [Mímir](https://en.wikipedia.org/wiki/M%C3%ADmir)* — share [Claude Code](https://docs.claude.com/en/docs/claude-code) memory **across machines** and **across every session**, peer-to-peer over [Tailscale](https://tailscale.com). No cloud.
