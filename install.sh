@@ -23,14 +23,44 @@ case "$(basename "${SHELL:-}")" in
   *)    if [ "$OS" = "Darwin" ]; then SHELL_RC="$HOME/.zshrc"; else SHELL_RC="$HOME/.bashrc"; fi ;;
 esac
 
-echo "→ check dependencies"
+# ---------- preflight (validate everything BEFORE touching the system) ----------
+echo "→ preflight"
 need_fail=0
 for dep in rsync python3; do
   command -v "$dep" >/dev/null 2>&1 || { echo "  ✗ $dep not found (required)"; need_fail=1; }
 done
+
+# Build path: cargo to compile, or a macOS-only prebuilt binary. No Linux/Windows
+# prebuilt ships yet, so WSL2/Linux must compile — which needs a C linker (cc).
+if command -v cargo >/dev/null 2>&1; then
+  if [ "$OS" = "Linux" ] && ! command -v cc >/dev/null 2>&1; then
+    echo "  ✗ C linker 'cc' not found — Rust needs a system C toolchain to build"; need_fail=1
+  fi
+elif [ "$OS" = "Darwin" ] && [ -f "$SELF_DIR/target/release/memnir" ]; then
+  : # macOS prebuilt binary present — ok
+else
+  echo "  ✗ cargo not found and no usable prebuilt for $OS — install Rust: https://rustup.rs"; need_fail=1
+fi
+
+# Warn-only: needed for cross-machine sync, not for a single-machine install.
 command -v ssh >/dev/null 2>&1 || echo "  ⚠ ssh not found — needed for peer sync; install before adding peers"
+command -v tailscale >/dev/null 2>&1 || echo "  ⚠ tailscale not found — required for cross-machine sync over the tailnet"
+
+# WSL2 + Windows desktop app: ~/.claude here is the WSL home, NOT where the
+# Windows Claude Code writes. Surface the real path so hooks don't land nowhere.
+if [ "$IS_WSL" = 1 ] && [ ! -d "$HOME/.claude" ]; then
+  win="$(ls -d /mnt/c/Users/*/.claude 2>/dev/null | head -1 || true)"
+  if [ -n "$win" ]; then
+    echo "  ⚠ ~/.claude not found in WSL2, but Claude Code data exists at:"
+    echo "      $win"
+    echo "    memnir will configure the WSL-side ~/.claude. Run Claude Code *inside WSL2*"
+    echo "    so it reads the same path, otherwise the hooks land in the wrong settings.json."
+  fi
+fi
+
 if [ "$need_fail" = 1 ]; then
-  [ "$OS" = "Linux" ] && echo "  on WSL2/Debian/Ubuntu:  sudo apt-get update && sudo apt-get install -y rsync openssh-client python3" >&2
+  [ "$OS" = "Linux" ] && echo "  fix on WSL2/Debian/Ubuntu:  sudo apt-get update && sudo apt-get install -y rsync openssh-client python3 build-essential" >&2
+  echo "  preflight failed — nothing was changed." >&2
   exit 1
 fi
 
