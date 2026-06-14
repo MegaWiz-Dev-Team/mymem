@@ -4,8 +4,13 @@ All notable changes to Memnir are documented here. Format follows [Keep a Change
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-14
+
 ### Added
 - **OS awareness** — `status`, `doctor`, and the dashboard subtitle now report the OS this machine runs on (`macOS (Apple Silicon)` / `(Intel)`, `Linux (WSL2)`, `Linux (x86_64)`, …) next to the hostname. WSL2 is detected at runtime via `/proc/version`.
+
+### Fixed
+- **Linux prebuilt binary now runs on any glibc** — release CI built `x86_64-unknown-linux-gnu` on the `ubuntu-latest` runner (glibc 2.39), so the v0.3.0 Linux binary failed on Ubuntu 22.04 LTS (glibc 2.35 — the common WSL2 distro) with `version GLIBC_2.39 not found`. Switched the Linux release target to **`x86_64-unknown-linux-musl`**: a fully static binary with no glibc dependency that runs on any distro. Thanks @Nuthuaoman for the WSL2 smoke test. (#3)
 
 ## [0.3.0] — 2026-06-14
 
