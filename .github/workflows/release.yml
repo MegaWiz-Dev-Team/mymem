@@ -24,7 +24,7 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-                 --title "Memnir $GITHUB_REF_NAME" --generate-notes
+                 --title "MyMem $GITHUB_REF_NAME" --generate-notes
 
   build:
     needs: create-release
@@ -55,14 +55,14 @@ jobs:
 
       - name: Package
         run: |
-          asset="memnir-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          cp "target/${{ matrix.target }}/release/memnir" "$asset"
+          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/mymem" "$asset"
           shasum -a 256 "$asset" > "$asset.sha256"
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          asset="memnir-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}"
           gh release upload "$GITHUB_REF_NAME" "$asset" "$asset.sha256" \
             --repo "$GITHUB_REPOSITORY" --clobber

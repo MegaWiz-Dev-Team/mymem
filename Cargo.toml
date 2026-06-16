@@ -1,11 +1,11 @@
 [package]
-name = "memnir"
-version = "0.4.0"
+name = "mymem"
+version = "0.6.0"
 edition = "2021"
-description = "Shared Claude memory across machines + sessions over Tailscale (scope-filtered sync, compact-index, doctor, dashboard)"
+description = "Shared Claude memory across machines + sessions over Tailscale (scope-filtered sync, version reservation, compact-index, doctor, dashboard)"
 
 [[bin]]
-name = "memnir"
+name = "mymem"
 path = "src/main.rs"
 
 [profile.release]

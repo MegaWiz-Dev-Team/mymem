@@ -1,12 +1,12 @@
 #!/bin/bash
-# Memnir installer — build the Rust binary and wire it into Claude on this machine.
-# Sets up: memnir binary (~/.local/bin), shell alias, project symlinks, auto-sync hooks.
+# MyMem installer — build the Rust binary and wire it into Claude on this machine.
+# Sets up: mymem binary (~/.local/bin), shell alias, project symlinks, auto-sync hooks.
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-SM="$HOME/.claude/memnir"
-BIN="$HOME/.local/bin/memnir"
-LOG="$HOME/.claude/memnir.log"
+SM="$HOME/.claude/mymem"
+BIN="$HOME/.local/bin/mymem"
+LOG="$HOME/.claude/mymem.log"
 
 # ---------- platform detection ----------
 OS="$(uname -s 2>/dev/null || echo unknown)"
@@ -36,7 +36,7 @@ if command -v cargo >/dev/null 2>&1; then
   if [ "$OS" = "Linux" ] && ! command -v cc >/dev/null 2>&1; then
     echo "  ✗ C linker 'cc' not found — Rust needs a system C toolchain to build"; need_fail=1
   fi
-elif [ "$OS" = "Darwin" ] && [ -f "$SELF_DIR/target/release/memnir" ]; then
+elif [ "$OS" = "Darwin" ] && [ -f "$SELF_DIR/target/release/mymem" ]; then
   : # macOS prebuilt binary present — ok
 else
   echo "  ✗ cargo not found and no usable prebuilt for $OS — install Rust: https://rustup.rs"; need_fail=1
@@ -53,7 +53,7 @@ if [ "$IS_WSL" = 1 ] && [ ! -d "$HOME/.claude" ]; then
   if [ -n "$win" ]; then
     echo "  ⚠ ~/.claude not found in WSL2, but Claude Code data exists at:"
     echo "      $win"
-    echo "    memnir will configure the WSL-side ~/.claude. Run Claude Code *inside WSL2*"
+    echo "    mymem will configure the WSL-side ~/.claude. Run Claude Code *inside WSL2*"
     echo "    so it reads the same path, otherwise the hooks land in the wrong settings.json."
   fi
 fi
@@ -64,30 +64,30 @@ if [ "$need_fail" = 1 ]; then
   exit 1
 fi
 
-echo "→ build memnir (Rust)"
+echo "→ build mymem (Rust)"
 mkdir -p "$SM" "$HOME/.claude/projects" "$HOME/.local/bin"
 if command -v cargo >/dev/null 2>&1; then
   ( cd "$SELF_DIR" && cargo build --release )
-  cp "$SELF_DIR/target/release/memnir" "$BIN"
-elif [ -f "$SELF_DIR/target/release/memnir" ] && [ "$OS" = "Darwin" ]; then
+  cp "$SELF_DIR/target/release/mymem" "$BIN"
+elif [ -f "$SELF_DIR/target/release/mymem" ] && [ "$OS" = "Darwin" ]; then
   echo "  cargo not found — using prebuilt binary (macOS Apple Silicon)"
-  cp "$SELF_DIR/target/release/memnir" "$BIN"
+  cp "$SELF_DIR/target/release/mymem" "$BIN"
 else
   echo "  ERROR: no cargo and no usable prebuilt binary for $OS." >&2
-  echo "  Install Rust (https://rustup.rs) and re-run — memnir compiles natively on WSL2/Linux." >&2
+  echo "  Install Rust (https://rustup.rs) and re-run — mymem compiles natively on WSL2/Linux." >&2
   exit 1
 fi
 chmod +x "$BIN"
 
-echo "→ shell aliases (memnir, mn) → $SHELL_RC"
-grep -q 'alias memnir=' "$SHELL_RC" 2>/dev/null || echo 'alias memnir="$HOME/.local/bin/memnir"' >> "$SHELL_RC"
-grep -q 'alias mn=' "$SHELL_RC" 2>/dev/null || echo 'alias mn="$HOME/.local/bin/memnir"' >> "$SHELL_RC"
+echo "→ shell aliases (mymem, mn) → $SHELL_RC"
+grep -q 'alias mymem=' "$SHELL_RC" 2>/dev/null || echo 'alias mymem="$HOME/.local/bin/mymem"' >> "$SHELL_RC"
+grep -q 'alias mn=' "$SHELL_RC" 2>/dev/null || echo 'alias mn="$HOME/.local/bin/mymem"' >> "$SHELL_RC"
 
-echo "→ peer config (~/.claude/memnir.conf)"
-CONF="$HOME/.claude/memnir.conf"
+echo "→ peer config (~/.claude/mymem.conf)"
+CONF="$HOME/.claude/mymem.conf"
 if [ ! -s "$CONF" ]; then
-  if [ -n "${MEMNIR_PEER:-}" ]; then
-    echo "$MEMNIR_PEER" > "$CONF"; echo "  peer = $MEMNIR_PEER"
+  if [ -n "${MYMEM_PEER:-}" ]; then
+    echo "$MYMEM_PEER" > "$CONF"; echo "  peer = $MYMEM_PEER"
   else
     printf "  peer (user@tailscale-host of the OTHER machine), blank to skip: "
     read -r ans </dev/tty 2>/dev/null || ans=""
@@ -119,7 +119,7 @@ p=os.path.expanduser("~/.claude/settings.json")
 d=json.load(open(p)) if os.path.exists(p) else {}
 h=d.setdefault("hooks",{})
 b=os.environ["BIN"]; log=os.environ["LOG"]
-def has(ev): return any("memnir" in hk.get("command","") for g in h.get(ev,[]) for hk in g.get("hooks",[]))
+def has(ev): return any("mymem" in hk.get("command","") for g in h.get(ev,[]) for hk in g.get("hooks",[]))
 if not has("SessionStart"):
     h.setdefault("SessionStart",[]).append({"hooks":[{"type":"command","command":f"{b} start >> {log} 2>&1"}]})
 if not has("Stop"):
@@ -128,12 +128,12 @@ json.dump(d,open(p,"w"),indent=2,ensure_ascii=False); print("  hooks ok")
 PY
 
 echo ""
-echo "✓ Memnir installed on $(hostname -s) — try: memnir doctor"
-echo "  peer is read from ~/.claude/memnir.conf (or env MEMNIR_PEER)"
+echo "✓ MyMem installed on $(hostname -s) — try: mymem doctor"
+echo "  peer is read from ~/.claude/mymem.conf (or env MYMEM_PEER)"
 echo "  reload your shell:  source $SHELL_RC"
 if [ "$IS_WSL" = 1 ]; then
   echo ""
-  echo "  WSL2 note: memnir manages ~/.claude/memnir inside this distro."
+  echo "  WSL2 note: mymem manages ~/.claude/mymem inside this distro."
   echo "  Run Claude Code *inside WSL2* so it shares the same ~/.claude."
   echo "  The Windows desktop app keeps memory on C:\\Users\\<you>\\.claude and is NOT bridged."
 fi
