@@ -1,8 +1,16 @@
 # Changelog
 
-All notable changes to Memnir are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versioning is [SemVer](https://semver.org).
+All notable changes to MyMem are documented here. Format follows [Keep a Changelog](https://keepachangelog.com); versioning is [SemVer](https://semver.org).
+
+> **MyMem** was previously released as **Memnir** (≤ 0.5.0). Older entries below predate the rename and refer to the `memnir` command/paths.
 
 ## [Unreleased]
+
+## [0.6.0] — 2026-06-16
+
+### Changed
+- **BREAKING — renamed `memnir` → `mymem`.** The binary, the command, the state directory (`~/.claude/memnir` → `~/.claude/mymem`), the peer config (`~/.claude/memnir.conf` → `~/.claude/mymem.conf`), the log (`~/.claude/mymem.log`), and the env override (`MEMNIR_PEER` → `MYMEM_PEER`) all move to the new name. The GitHub repo was renamed too (GitHub keeps a redirect from the old URL).
+  - **Migration (per machine):** back up the pool (`tar czf ~/.claude/mymem.backup.tgz -C ~/.claude memnir`), install the new binary, `mv ~/.claude/memnir ~/.claude/mymem`, `mv ~/.claude/memnir.conf ~/.claude/mymem.conf`, repoint each `~/.claude/projects/*/memory` symlink to `~/.claude/mymem`, and update the SessionStart/Stop hooks in `settings.json` to call `mymem`. **All machines in a mesh must migrate together** — the rsync paths are name-matched, so a half-migrated mesh won't sync.
 
 ## [0.5.0] — 2026-06-16
 

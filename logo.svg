@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Memnir — Mímir's Well">
-  <title>Memnir — Mímir's Well</title>
-  <!-- falling drop (a new memory into the well of wisdom) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyMem — my memory, everywhere">
+  <title>MyMem — my memory, everywhere</title>
+  <!-- falling drop (a new memory into the shared pool) -->
   <path d="M32 5 q4.5 7.5 4.5 12 a4.5 4.5 0 1 1 -9 0 Q27.5 12.5 32 5 z" fill="#0f766e"/>
   <!-- ripples (well seen from above) -->
   <circle cx="32" cy="37" r="24" fill="none" stroke="#14b8a6" stroke-width="3.5"/>

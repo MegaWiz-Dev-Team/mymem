@@ -1,7 +1,7 @@
-// Memnir — shared Claude memory across machines + sessions over Tailscale.
+// MyMem — shared Claude memory across machines + sessions over Tailscale.
 // Single binary, pure std. Shells out to system rsync/ssh (no reinvention).
 // Only memories tagged `metadata.scope: shared` sync; everything else is local.
-// Peers form a mesh: each machine lists every other in ~/.claude/memnir.conf.
+// Peers form a mesh: each machine lists every other in ~/.claude/mymem.conf.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const SSH_E: &str = "ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new";
 const SSH_ARGS: [&str; 6] = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"];
-const REMOTE_SHARED_LS: &str = "cd ~/.claude/memnir && grep -lE '^[[:space:]]*scope:[[:space:]]*shared[[:space:]]*$' -- *.md 2>/dev/null";
+const REMOTE_SHARED_LS: &str = "cd ~/.claude/mymem && grep -lE '^[[:space:]]*scope:[[:space:]]*shared[[:space:]]*$' -- *.md 2>/dev/null";
 const IDX_WARN: usize = 12_000; // always-on index tokens before it's flagged
 const OVERSIZE: usize = 2_000; // a single memory above this is flagged for splitting
 const TIER0_TYPES: [&str; 2] = ["user", "feedback"]; // default always-on tier for compact-index
@@ -28,7 +28,7 @@ fn home() -> String {
     std::env::var("HOME").expect("HOME not set")
 }
 fn sm() -> PathBuf {
-    PathBuf::from(home()).join(".claude/memnir")
+    PathBuf::from(home()).join(".claude/mymem")
 }
 fn hostname() -> String {
     Command::new("hostname").arg("-s").output().ok()
@@ -55,15 +55,15 @@ fn os_label() -> String {
     }
 }
 // All peers (the other machines). Mesh: every machine lists every other one.
-// env MEMNIR_PEER (comma/space/newline separated) overrides; else every
-// non-comment line of ~/.claude/memnir.conf.
+// env MYMEM_PEER (comma/space/newline separated) overrides; else every
+// non-comment line of ~/.claude/mymem.conf.
 fn peers() -> Vec<String> {
-    if let Ok(p) = std::env::var("MEMNIR_PEER") {
+    if let Ok(p) = std::env::var("MYMEM_PEER") {
         let v: Vec<String> = p.split([',', ' ', '\n', '\t']).map(str::trim)
             .filter(|s| !s.is_empty()).map(String::from).collect();
         if !v.is_empty() { return v; }
     }
-    fs::read_to_string(PathBuf::from(home()).join(".claude/memnir.conf"))
+    fs::read_to_string(PathBuf::from(home()).join(".claude/mymem.conf"))
         .map(|s| s.lines().map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#')).map(String::from).collect())
         .unwrap_or_default()
@@ -489,7 +489,7 @@ fn regen_index() {
         let items: Vec<(String, String)> = mems.iter().map(|m| (m.typ.clone(), line_of(m))).collect();
         let (t0, _) = partition_tier0(&items, &tier0);
         let head = format!(
-            "# Memory Index (Tier-0)\n\n> Compacted: only {} memories are always-on. Full catalog in [MEMORY.full.md](MEMORY.full.md); every memory stays searchable via `memnir search`.\n\n",
+            "# Memory Index (Tier-0)\n\n> Compacted: only {} memories are always-on. Full catalog in [MEMORY.full.md](MEMORY.full.md); every memory stays searchable via `mymem search`.\n\n",
             tier0.join("/"));
         let _ = fs::write(&idx_path, format!("{}{}\n", head, t0.join("\n")));
         let full: Vec<String> = items.iter().map(|(_, l)| l.clone()).collect();
@@ -534,21 +534,21 @@ fn rsync_files_from(list: &str, src: &str, dest: &str) {
 fn push() {
     stamp_origins();
     let ps = peers();
-    if ps.is_empty() { eprintln!("memnir: no peers configured (~/.claude/memnir.conf)"); return; }
+    if ps.is_empty() { eprintln!("mymem: no peers configured (~/.claude/mymem.conf)"); return; }
     let list = shared_files().join("\n");
     let src = format!("{}/", sm().display());
     for p in ps {
-        rsync_files_from(&list, &src, &format!("{}:.claude/memnir/", p));
+        rsync_files_from(&list, &src, &format!("{}:.claude/mymem/", p));
     }
 }
 fn pull() {
     let ps = peers();
-    if ps.is_empty() { eprintln!("memnir: no peers configured (~/.claude/memnir.conf)"); return; }
+    if ps.is_empty() { eprintln!("mymem: no peers configured (~/.claude/mymem.conf)"); return; }
     let dest = format!("{}/", sm().display());
     for p in &ps {
         let out = Command::new("ssh").args(SSH_ARGS).arg(p).arg(REMOTE_SHARED_LS).output();
         let rlist = out.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-        rsync_files_from(&rlist, &format!("{}:.claude/memnir/", p), &dest);
+        rsync_files_from(&rlist, &format!("{}:.claude/mymem/", p), &dest);
     }
     regen_index();
 }
@@ -557,7 +557,7 @@ fn peer_drift_to(p: &str) -> Option<usize> {
     if list.trim().is_empty() { return Some(0); }
     let mut child = Command::new("rsync")
         .args(["-auzn", "--out-format=%n", "-e", SSH_E, "--files-from=-",
-            &format!("{}/", sm().display()), &format!("{}:.claude/memnir/", p)])
+            &format!("{}/", sm().display()), &format!("{}:.claude/mymem/", p)])
         .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().ok()?;
     child.stdin.take().unwrap().write_all(list.as_bytes()).ok();
     let out = child.wait_with_output().ok()?;
@@ -643,10 +643,10 @@ fn analyze() -> Analysis {
 fn cmd_status() {
     let a = analyze();
     let ps = peers();
-    println!("Memnir store: {}", sm().display());
+    println!("MyMem store: {}", sm().display());
     println!("memories: {}  (shared:{}  local:{})", a.n, a.shared, a.n - a.shared);
     println!("origins:  {}", fmt_counts(&a.origins));
-    println!("peers:    {}", if ps.is_empty() { "(none — see ~/.claude/memnir.conf)".to_string() } else { ps.join(", ") });
+    println!("peers:    {}", if ps.is_empty() { "(none — see ~/.claude/mymem.conf)".to_string() } else { ps.join(", ") });
 }
 fn cmd_list() {
     let mems = load();
@@ -703,11 +703,11 @@ fn cmd_doctor(check: bool) {
         if a.broken > 0 { w.push(format!("{} broken [[links]]", a.broken)); }
         if drift_sum > 0 { w.push(format!("sync drift {} files", drift_sum)); }
         if a.resv_collisions > 0 { w.push(format!("{} version reservation collision(s)", a.resv_collisions)); }
-        if !w.is_empty() { println!("⚠ memnir: {}  → run `memnir doctor`", w.join("; ")); }
+        if !w.is_empty() { println!("⚠ mymem: {}  → run `mymem doctor`", w.join("; ")); }
         return;
     }
     let dot = |v: usize, t: usize| if v > t { "🔴" } else if v * 10 > t * 6 { "🟠" } else { "🟢" };
-    println!("MEMNIR HEALTH ───────────────────────────────── {} · {}", hostname(), os_label());
+    println!("MYMEM HEALTH ───────────────────────────────── {} · {}", hostname(), os_label());
     println!("inventory   {} memories   {}", a.n, fmt_counts(&a.types));
     println!("scope       shared:{}   local:{}", a.shared, a.n - a.shared);
     if a.resv_active > 0 || a.resv_collisions > 0 {
@@ -725,28 +725,28 @@ fn cmd_doctor(check: bool) {
     println!();
     println!("⚠ ISSUES & ACTIONS");
     if a.resv_collisions > 0 {
-        println!(" 🔴 {} version reservation collision(s) → memnir reservations   (two sessions claimed one version)", a.resv_collisions);
+        println!(" 🔴 {} version reservation collision(s) → mymem reservations   (two sessions claimed one version)", a.resv_collisions);
     }
     if a.idx_tok > IDX_WARN {
         let hint = if compact_on() { "widen local / prune Tier-0" } else { "Tier-0 split" };
-        println!(" 🔴 index {}k always-on        → memnir compact-index   ({})", (a.idx_tok + 500) / 1000, hint);
+        println!(" 🔴 index {}k always-on        → mymem compact-index   ({})", (a.idx_tok + 500) / 1000, hint);
     }
     if a.broken > 0 {
-        println!(" 🟠 {} broken [[links]]          → memnir fix-links", a.broken);
+        println!(" 🟠 {} broken [[links]]          → mymem fix-links", a.broken);
     }
     if !a.oversized.is_empty() {
         let tops: Vec<_> = a.oversized.iter().take(3).map(|s| s.trim_end_matches(".md")).collect();
-        println!(" 🟠 {} oversized (>2k tok)      → memnir split <id>   ({}…)", a.oversized.len(), tops.join(", "));
+        println!(" 🟠 {} oversized (>2k tok)      → mymem split <id>   ({}…)", a.oversized.len(), tops.join(", "));
     }
     if !a.isolated.is_empty() {
-        println!(" 🟡 {} isolated memories       → link them (graph: memnir dash)", a.isolated.len());
+        println!(" 🟡 {} isolated memories       → link them (graph: mymem dash)", a.isolated.len());
     }
     if !a.scope_flags.is_empty() {
         let ex: Vec<_> = a.scope_flags.iter().take(3).map(|s| s.trim_end_matches(".md")).collect();
-        println!(" 🟡 {} local look cross-machine → memnir share <id>  ({}…)", a.scope_flags.len(), ex.join(", "));
+        println!(" 🟡 {} local look cross-machine → mymem share <id>  ({}…)", a.scope_flags.len(), ex.join(", "));
     }
     println!();
-    println!("→ visualize:  memnir dash");
+    println!("→ visualize:  mymem dash");
 }
 fn idx_tok_now() -> usize {
     fs::read_to_string(sm().join("MEMORY.md")).map(|s| s.chars().count() / 4).unwrap_or(0)
@@ -770,7 +770,7 @@ fn cmd_compact_index(on: bool, types: Vec<String>) {
         println!("✓ compact-index ON — Tier-0 = {}", tier0.join("/"));
         println!("  MEMORY.md       ~{:.1}k → ~{:.1}k tok/session ({} of {} memories)",
             before as f64 / 1000.0, after as f64 / 1000.0, kept, mems.len());
-        println!("  MEMORY.full.md  full catalog — on-demand, still searchable via `memnir search`");
+        println!("  MEMORY.full.md  full catalog — on-demand, still searchable via `mymem search`");
         if after > IDX_WARN { println!("  ⚠ still above {}k — widen what's local or prune Tier-0 types", IDX_WARN / 1000); }
     } else {
         println!("✓ compact-index OFF — MEMORY.md restored to full catalog (~{:.1}k tok/session)", after as f64 / 1000.0);
@@ -844,7 +844,7 @@ fn cmd_fix_links(apply: bool) {
 fn cmd_search(query: &str, expand: bool) {
     let ql = query.to_lowercase();
     let tokens: Vec<&str> = ql.split_whitespace().collect();
-    if tokens.is_empty() { eprintln!("usage: memnir search <query> [--expand]"); std::process::exit(1); }
+    if tokens.is_empty() { eprintln!("usage: mymem search <query> [--expand]"); std::process::exit(1); }
     let mut hits: Vec<(String, i32, String)> = Vec::new();
     for p in md_files() {
         let Ok(c) = fs::read_to_string(&p) else { continue };
@@ -991,10 +991,10 @@ fn cmd_serve(port: u16) {
     let addr = format!("127.0.0.1:{}", port);
     let listener = match TcpListener::bind(&addr) {
         Ok(l) => l,
-        Err(e) => { eprintln!("memnir serve: cannot bind {} — {}", addr, e); std::process::exit(1); }
+        Err(e) => { eprintln!("mymem serve: cannot bind {} — {}", addr, e); std::process::exit(1); }
     };
     let url = format!("http://{}/?t={}", addr, token);
-    println!("Memnir interactive dashboard → {}", url);
+    println!("MyMem interactive dashboard → {}", url);
     println!("(localhost only · Ctrl-C to stop)");
     let _ = Command::new("open").arg(&url).status();
     for mut s in listener.incoming().flatten() { handle_conn(&mut s, &token); }
@@ -1008,7 +1008,7 @@ fn short_tag() -> String { rand_token().chars().take(6).collect() }
 // held by another machine; --next-style modes pick the next free version.
 fn cmd_reserve(repo: &str, mode: ReserveMode, desc: &str) {
     let rslug = slug(repo);
-    if rslug.is_empty() { eprintln!("memnir: repo name has no usable characters"); std::process::exit(1); }
+    if rslug.is_empty() { eprintln!("mymem: repo name has no usable characters"); std::process::exit(1); }
     let host = hostname();
     let host = if host.is_empty() { "unknown".to_string() } else { host };
     let desc = desc.replace(['\n', '\r'], " ").trim().to_string();
@@ -1021,7 +1021,7 @@ fn cmd_reserve(repo: &str, mode: ReserveMode, desc: &str) {
             Some(wv) => {
                 if let Some(o) = active.iter().find(|r| r.ver == Some(wv) && r.owner != host) {
                     eprintln!("⚠ {} v{} is already reserved by {} ({}).", repo, fmt_semver(wv), o.owner, human_age(now_stamp().saturating_sub(o.reserved_at)));
-                    eprintln!("  pick another:  memnir reserve {} --next", repo);
+                    eprintln!("  pick another:  mymem reserve {} --next", repo);
                     std::process::exit(1);
                 }
                 if active.iter().any(|r| r.ver == Some(wv) && r.owner == host) {
@@ -1050,9 +1050,9 @@ fn cmd_reserve(repo: &str, mode: ReserveMode, desc: &str) {
     let path = sm().join(&fname);
     let desc_fm = if desc.is_empty() { "(no description)".to_string() } else { desc.clone() };
     let body = format!(
-        "---\nname: reservation-{rslug}-{vslug}-{tag}\ndescription: {desc_fm}\nmetadata:\n  type: {RESV_TYPE}\n  scope: shared\n  repo: {repo}\n  version: {version}\n  status: active\n  owner: {host}\n  tag: {tag}\n  reserved_at: {now}\n---\n🔖 **{repo} v{version}** — reserved by `{host}`\n\n**For:** {desc_fm}  \n**Reserved:** {now} (unix epoch)  \n**Release when done:** `memnir release {repo} {version}`\n");
+        "---\nname: reservation-{rslug}-{vslug}-{tag}\ndescription: {desc_fm}\nmetadata:\n  type: {RESV_TYPE}\n  scope: shared\n  repo: {repo}\n  version: {version}\n  status: active\n  owner: {host}\n  tag: {tag}\n  reserved_at: {now}\n---\n🔖 **{repo} v{version}** — reserved by `{host}`\n\n**For:** {desc_fm}  \n**Reserved:** {now} (unix epoch)  \n**Release when done:** `mymem release {repo} {version}`\n");
     if let Err(e) = fs::write(&path, body) {
-        eprintln!("memnir: cannot write {} — {}", path.display(), e);
+        eprintln!("mymem: cannot write {} — {}", path.display(), e);
         std::process::exit(1);
     }
     regen_index();
@@ -1060,13 +1060,13 @@ fn cmd_reserve(repo: &str, mode: ReserveMode, desc: &str) {
     println!("🔖 reserved {} v{}", repo, version);
     println!("   owner {}   tag {}", host, tag);
     if !desc.is_empty() { println!("   for: {}", desc); }
-    println!("   release when done:  memnir release {} {}", repo, version);
+    println!("   release when done:  mymem release {} {}", repo, version);
     // Surface a race-window double-claim if a peer grabbed the same version.
     let after = load_reservations();
     let dupes = after.iter().filter(|r| r.status == "active" && r.repo_slug == rslug
         && r.ver == parse_semver(&version) && r.tag != tag).count();
     if dupes > 0 {
-        eprintln!("⚠ heads-up: {} other active claim(s) on {} v{} — run `memnir reservations {}` to resolve", dupes, repo, version, repo);
+        eprintln!("⚠ heads-up: {} other active claim(s) on {} v{} — run `mymem reservations {}` to resolve", dupes, repo, version, repo);
     }
 }
 fn cmd_reservations(repo_filter: Option<&str>, show_all: bool) {
@@ -1101,7 +1101,7 @@ fn cmd_reservations(repo_filter: Option<&str>, show_all: bool) {
             if r.desc == "(no description)" { "" } else { &r.desc }, flag);
     }
     if collisions > 0 {
-        println!("\n⚠ {} version(s) claimed by 2+ sessions — release the duplicate(s): memnir release <repo> <version>", collisions);
+        println!("\n⚠ {} version(s) claimed by 2+ sessions — release the duplicate(s): mymem release <repo> <version>", collisions);
     }
 }
 fn cmd_release(repo: &str, version: &str) {
@@ -1139,10 +1139,10 @@ fn cmd_release(repo: &str, version: &str) {
 }
 
 fn cmd_help() {
-    print!(r#"memnir — shared Claude memory across machines + sessions, over Tailscale
+    print!(r#"mymem — shared Claude memory across machines + sessions, over Tailscale
 
 USAGE
-  memnir <command> [args]
+  mymem <command> [args]
 
 SYNC
   sync                push + pull shared memories with all peers, then rebuild the index
@@ -1185,17 +1185,17 @@ INFO
   help               show this help
 
 CONFIG
-  peers              ~/.claude/memnir.conf — one `user@tailscale-host` per line (mesh),
-                     or env MEMNIR_PEER (comma/space separated)
+  peers              ~/.claude/mymem.conf — one `user@tailscale-host` per line (mesh),
+                     or env MYMEM_PEER (comma/space separated)
 
 EXAMPLES
-  memnir share project_firestore_envs
-  memnir reserve Mimir --next "OCR retry queue"
-  memnir reserve heimdall 2.4.0 "gemini parallel tool-call fix"
-  memnir reservations Mimir
-  memnir release Mimir 0.5.0
-  memnir doctor
-  memnir serve
+  mymem share project_firestore_envs
+  mymem reserve Mimir --next "OCR retry queue"
+  mymem reserve heimdall 2.4.0 "gemini parallel tool-call fix"
+  mymem reservations Mimir
+  mymem release Mimir 0.5.0
+  mymem doctor
+  mymem serve
 "#);
 }
 
@@ -1207,15 +1207,15 @@ fn main() {
         "sync" => cmd_sync(),
         "push" => push(),
         "pull" => pull(),
-        "share" => cmd_scope(args.get(2).expect("usage: memnir share <id>"), true),
-        "local" => cmd_scope(args.get(2).expect("usage: memnir local <id>"), false),
+        "share" => cmd_scope(args.get(2).expect("usage: mymem share <id>"), true),
+        "local" => cmd_scope(args.get(2).expect("usage: mymem local <id>"), false),
         "link" => cmd_link(false),
         "autolink" => cmd_link(true),
         "reserve" => {
             let rest: Vec<String> = args.iter().skip(2).cloned().collect();
             match parse_reserve_args(&rest) {
                 Some((repo, mode, desc)) => cmd_reserve(&repo, mode, &desc),
-                None => { eprintln!("usage: memnir reserve <repo> [<version>|--patch|--minor|--major] [description]"); std::process::exit(1); }
+                None => { eprintln!("usage: mymem reserve <repo> [<version>|--patch|--minor|--major] [description]"); std::process::exit(1); }
             }
         }
         "reservations" | "reserved" | "resv" => {
@@ -1228,7 +1228,7 @@ fn main() {
             let version = args.get(3).filter(|s| !s.starts_with("--"));
             match (repo, version) {
                 (Some(r), Some(v)) => cmd_release(r, v),
-                _ => { eprintln!("usage: memnir release <repo> <version>"); std::process::exit(1); }
+                _ => { eprintln!("usage: mymem release <repo> <version>"); std::process::exit(1); }
             }
         }
         "status" => cmd_status(),
@@ -1240,7 +1240,7 @@ fn main() {
         }
         "related" => {
             let id = args.get(2).filter(|s| !s.starts_with("--"))
-                .unwrap_or_else(|| { eprintln!("usage: memnir related <id> [--depth N]"); std::process::exit(1); });
+                .unwrap_or_else(|| { eprintln!("usage: mymem related <id> [--depth N]"); std::process::exit(1); });
             let depth = args.iter().position(|a| a == "--depth").and_then(|i| args.get(i + 1))
                 .and_then(|p| p.parse().ok()).unwrap_or(2);
             cmd_related(id, depth);
@@ -1260,7 +1260,7 @@ fn main() {
             cmd_serve(port);
         }
         "help" | "-h" | "--help" => cmd_help(),
-        other => { eprintln!("memnir: unknown command '{}'\n", other); cmd_help(); std::process::exit(1); }
+        other => { eprintln!("mymem: unknown command '{}'\n", other); cmd_help(); std::process::exit(1); }
     }
 }
 
