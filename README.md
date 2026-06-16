@@ -134,6 +134,9 @@ Every action above is a real command — run it to clear the flag. See [Token fo
 | `memnir share <id>` | set a memory `scope: shared` and push it to the peers |
 | `memnir local <id>` | remove the tag → local again (won't sync) |
 | `memnir list` | list shared vs local memories (shared show their origin machine) |
+| `memnir reserve <repo> [<version>\|--patch\|--minor\|--major] [desc]` | claim a version before a new feature/issue (see [Version reservation](#version-reservation-)); no version/flag → next minor |
+| `memnir reservations [repo] [--all]` | list active reservations (grouped by repo, with owner/age/desc), flagging collisions |
+| `memnir release <repo> <version>` | free your reservation when the work has shipped |
 | `memnir search <q> [--expand]` | keyword search (name/desc/body ranked); `--expand` also pulls in `[[link]]`-related memories |
 | `memnir related <id> [--depth N]` | memories connected to `<id>` via `[[links]]` (BFS, default depth 2) |
 | `memnir status` | store path, counts, origins, peers |
@@ -218,6 +221,22 @@ memnir fix-links --apply    # rewrite the unambiguous ones
 ```
 
 A `[[link]]` is "broken" when no memory matches it. `fix-links` only rewrites a link when exactly **one** memory is an unambiguous normalized-substring match — typos and genuine forward-references (a `[[name]]` for a memory you haven't written yet) are listed but **left untouched**.
+
+## Version reservation 🔖
+
+When several sessions (the same Mac, or different machines on the mesh) work the **same repo** concurrently, two of them can independently pick "the next version" and collide. Reserve one **before** you start a new feature/issue so every session sees what's in flight:
+
+```bash
+memnir reserve Mimir "OCR retry queue"      # → next MINOR (e.g. 0.5.0)
+memnir reserve Mimir --patch "fix index"    # → next PATCH
+memnir reserve heimdall 2.4.0 "tool-call"   # → an explicit version
+memnir reservations                          # who holds what (⚠ flags collisions)
+memnir release Mimir 0.5.0                    # free it when the work ships
+```
+
+`reserve` with no version/flag picks the next **minor**; `--patch` / `--major` (and `--next`, an alias for `--minor`) choose the bump. An explicit version another machine already holds is **refused**.
+
+Each reservation is its **own `scope: shared` file** (with a short random tag), so claims sync independently with no newest-wins clobber — and a same-version double-claim survives as two files and is **surfaced as a `COLLISION`** (in `reservations` and `doctor`) instead of silently lost. This is **best-effort coordination, not a distributed lock**: the sync window can still race, but races are made visible, not hidden. `release` marks a reservation `status: released` (a tombstone — the sync model never deletes). Reservation records are kept out of the always-on index, `list`, and the dashboard graph; `doctor` / `status` report active-reservation and collision counts.
 
 ## Sync design
 
