@@ -7,7 +7,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_dir as symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -25,7 +28,10 @@ const HTML: &str = include_str!("dashboard.template.html");
 
 // ---------- paths / config ----------
 fn home() -> String {
-    std::env::var("HOME").expect("HOME not set")
+    // HOME on Unix/WSL2; USERPROFILE is the native-Windows equivalent.
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .expect("neither HOME nor USERPROFILE is set")
 }
 fn sm() -> PathBuf {
     PathBuf::from(home()).join(".claude/mymem")
