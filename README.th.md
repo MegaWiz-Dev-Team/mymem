@@ -7,6 +7,8 @@
 
 *my memory, everywhere* — share memory ของ [Claude Code](https://docs.claude.com/en/docs/claude-code) ข้าม **เครื่อง** และ **ทุก session** แบบ peer-to-peer ผ่าน [Tailscale](https://tailscale.com) ไม่ผ่าน cloud
 
+> **🆕 v0.6.0** — เปลี่ยนชื่อจาก **Memnir**, เพิ่ม **[จอง version](#จอง-version-)** กัน 2 session บน repo เดียวกันแย่งเวอร์ชันเดียวกัน [Release notes →](https://github.com/MegaWiz-Dev-Team/mymem/releases/tag/v0.6.0)
+
 > 🇬🇧 [English](README.md)
 
 Claude Code เก็บ memory แยกตาม project ที่ `~/.claude/projects/<encoded-path>/memory/` ผูกกับเครื่องและ working dir เดียว — เปิดอีกเครื่องหรืออีก project ก็ไม่เห็นกัน MyMem รวมเป็น **pool เดียว** ที่ทุก session ทุกเครื่องใช้ร่วมกัน และ sync เฉพาะ memory ที่คุณเลือกระหว่างเครื่อง

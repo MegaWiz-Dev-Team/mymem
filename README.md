@@ -7,6 +7,8 @@
 
 *my memory, everywhere* — share [Claude Code](https://docs.claude.com/en/docs/claude-code) memory **across machines** and **across every session**, peer-to-peer over [Tailscale](https://tailscale.com). No cloud.
 
+> **🆕 v0.6.0** — renamed from **Memnir**, plus new **[version reservation](#version-reservation-)** so two concurrent sessions on the same repo never grab the same version. [Release notes →](https://github.com/MegaWiz-Dev-Team/mymem/releases/tag/v0.6.0)
+
 > 🇹🇭 [อ่านภาษาไทย](README.th.md)
 
 Claude Code stores memory per-project under `~/.claude/projects/<encoded-path>/memory/`, tied to one machine and one working directory — open another machine or another project and none of it follows you. MyMem unifies it into **one pool** that every session on every machine reads and writes, and syncs only the memories you choose between machines.
