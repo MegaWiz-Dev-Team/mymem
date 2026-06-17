@@ -1,11 +1,11 @@
 name: release
 
 # Build prebuilt binaries on every version tag and attach them to the release.
-# Covers macOS (arm64 + Intel) and Linux x86_64 as a static musl binary — no
-# glibc dependency, so it runs on any distro (e.g. WSL2 Ubuntu 22.04, glibc 2.35;
-# a glibc build on the 24.04 runner would fail there with GLIBC_2.39 not found).
-# Native Windows (x86_64-pc-windows-msvc) is intentionally omitted: src/main.rs
-# uses std::os::unix::fs::symlink and will not compile there yet (see issue #1).
+# Covers macOS (arm64 + Intel), Linux x86_64 as a static musl binary — no glibc
+# dependency, so it runs on any distro (e.g. WSL2 Ubuntu 22.04, glibc 2.35; a
+# glibc build on the 24.04 runner would fail there with GLIBC_2.39 not found) —
+# and native Windows (x86_64-pc-windows-msvc). The unix-only bits (symlink import
+# and HOME lookup) are now #[cfg]-gated, so Windows compiles cleanly (see #8).
 
 on:
   push:
@@ -40,6 +40,8 @@ jobs:
             os: macos-14
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -54,15 +56,19 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package
+        shell: bash
         run: |
-          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          cp "target/${{ matrix.target }}/release/mymem" "$asset"
+          ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
+          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}${ext}"
+          cp "target/${{ matrix.target }}/release/mymem${ext}" "$asset"
           shasum -a 256 "$asset" > "$asset.sha256"
 
       - name: Upload to release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
+          asset="mymem-${GITHUB_REF_NAME}-${{ matrix.target }}${ext}"
           gh release upload "$GITHUB_REF_NAME" "$asset" "$asset.sha256" \
             --repo "$GITHUB_REPOSITORY" --clobber
